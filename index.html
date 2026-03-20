@@ -38,11 +38,14 @@
         .title { font-family: 'Dancing Script', cursive; font-size: 2.5rem; color: var(--green-primary); margin-bottom: 15px; }
 
         .photostrip-wrapper { position: relative; display: inline-block; margin: 0 auto 10px auto; touch-action: none; }
+        
         #photostrip-container { 
             display: flex; flex-direction: column; gap: 8px; 
             background: white; padding: 12px 12px 65px 12px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.15); width: fit-content; 
-            position: relative; overflow: visible;
+            position: relative; 
+            overflow: hidden; 
+            border-radius: 2px;
         }
 
         .filter-japanese .captured-slot { filter: brightness(1.1) contrast(0.9) saturate(0.9) sepia(0.1) !important; }
@@ -217,7 +220,7 @@
 
         async function startCam() {
             try {
-                stream = await navigator.mediaDevices.getUserMedia({ video: { aspectRatio: 4/3 } });
+                stream = await navigator.mediaDevices.getUserMedia({ video: { aspectRatio: 4/3, width: { ideal: 1280 }, height: { ideal: 720 } } });
                 document.getElementById('video').srcObject = stream;
             } catch (err) { alert("Akses kamera ditolak."); }
         }
@@ -225,9 +228,12 @@
         function capturePhoto() {
             const video = document.getElementById('video');
             const canvas = document.createElement('canvas');
-            canvas.width = 800; 
-            canvas.height = 600;
+            canvas.width = 1600; 
+            canvas.height = 1200;
             const ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            
             const vRatio = video.videoWidth / video.videoHeight;
             const cRatio = canvas.width / canvas.height;
             let sx, sy, sw, sh;
@@ -239,7 +245,7 @@
                 sx = 0; sy = (video.videoHeight - sh) / 2;
             }
             ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-            photosTaken.push(canvas.toDataURL('image/png'));
+            photosTaken.push(canvas.toDataURL('image/png', 1.0));
             if (photosTaken.length < maxPhotos) {
                 document.getElementById('cam-status').innerText = `Ambil Foto ${photosTaken.length + 1}/${maxPhotos}`;
             } else {
@@ -280,15 +286,20 @@
             const canvas = document.getElementById('finalCanvas');
             const ctx = canvas.getContext('2d');
             const stripEl = document.getElementById('photostrip-container');
+            
+            const scale = 4; 
             const offset = 50; 
             const stripRect = stripEl.getBoundingClientRect();
             
-            canvas.width = stripRect.width + (offset * 2);
-            canvas.height = stripRect.height + (offset * 2);
+            canvas.width = (stripRect.width + (offset * 2)) * scale;
+            canvas.height = (stripRect.height + (offset * 2)) * scale;
 
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
             ctx.save();
+            ctx.scale(scale, scale);
             ctx.translate(offset, offset);
             
             ctx.save();
@@ -336,9 +347,23 @@
                     if(currentFilterClass === 'filter-japanese') ctx.filter = 'brightness(1.1) contrast(0.9) saturate(0.9) sepia(0.1)';
                     else if(currentFilterClass === 'filter-vintage') ctx.filter = 'sepia(0.5) contrast(1.1) brightness(0.9) grayscale(0.2)';
                     
+                    // FIX: Center Crop Logic untuk mencegah foto gepeng
                     ctx.translate(targetX + targetW, targetY);
                     ctx.scale(-1, 1);
-                    ctx.drawImage(img, 0, 0, targetW, targetH);
+                    
+                    const imgRatio = img.width / img.height;
+                    const targetRatio = targetW / targetH;
+                    let sw, sh, sx, sy;
+                    
+                    if (imgRatio > targetRatio) {
+                        sh = img.height; sw = img.height * targetRatio;
+                        sx = (img.width - sw) / 2; sy = 0;
+                    } else {
+                        sw = img.width; sh = img.width / targetRatio;
+                        sx = 0; sy = (img.height - sh) / 2;
+                    }
+
+                    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, targetW, targetH);
                     ctx.restore();
 
                     loaded++;
@@ -359,6 +384,7 @@
                             const rot = rotations.get(id) || 0;
                             
                             ctx.save();
+                            ctx.scale(scale, scale); 
                             ctx.translate(x, y);
                             ctx.rotate(rot * Math.PI / 180);
                             ctx.font = `${size}px Arial`;
